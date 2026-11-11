@@ -12,7 +12,9 @@ A small floating pill for macOS that shows what Claude Code is doing:
 
 It floats above other windows, including full-screen apps, on every desktop. It follows light and dark mode
 and doesn't appear in the Dock or Cmd-Tab. Drag it to move it (it remembers the spot). Right-click to switch between a dog and a cat, pick a size
-(Small, Medium, Big), or quit; your choices are remembered.
+(Small, Medium, Big), choose how it's shown (**Show as → Pet / Pill / Menu bar**), or quit; your choices are remembered.
+**Pill** hides the animal and keeps just the status pill; **Menu bar** puts the animated pet and its status in the
+macOS menu bar (click it for the same menu).
 If several Claude Code sessions are open, it shows the most urgent one.
 
 **Unofficial fan project, not affiliated with Anthropic.**

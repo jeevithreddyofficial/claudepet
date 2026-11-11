@@ -3,7 +3,8 @@
 // Built automatically by `claudepet start` (swiftc -O mac/ClaudePetMac.swift -o ~/.claudepet/ClaudePetMac).
 //
 //   click  → pet the dog (hearts, wakes it up)     hover → label shows what Claude is doing
-//   drag   → move it (position is remembered)      right-click → Dog / Cat, Size, Move to corner, Quit
+//   drag   → move it (position is remembered)      right-click → Dog / Cat, Size, Show as, Move to corner, Quit
+//   Show as: Pet (floating pet + label), Pill (just the floating status pill), Menu bar (pet + status in the menu bar)
 import AppKit
 
 // MARK: - files & config
@@ -110,6 +111,8 @@ var PET = (loadConfig()["pet"] as? String) == "cat" ? "cat" : "dog"
 var PAL: [Character: NSColor] { PET == "cat" ? CAT_PAL : DOG_PAL }
 let SIZES: [(String, CGFloat)] = [("Small", 1.5), ("Medium", 2), ("Big", 3)]
 var SIZE = SIZES.contains { $0.0 == (loadConfig()["size"] as? String) } ? loadConfig()["size"] as! String : "Medium"
+let MODES: [(String, String)] = [("Pet", "pet"), ("Pill", "pill"), ("Menu bar", "menubar")]
+var MODE = MODES.contains { $0.1 == (loadConfig()["mode"] as? String) } ? loadConfig()["mode"] as! String : "pet"
 let GLYPHS: [String: [String]] = [
     "z": ["111", "001", "010", "100", "111"],
     "!": ["1", "1", "1", "0", "1"],
@@ -137,7 +140,10 @@ var S: CGFloat { SIZES.first { $0.0 == SIZE }?.1 ?? 2 }   // points per art pixe
 var ART_H: CGFloat { CGFloat(GH) * S }
 var LABEL_H: CGFloat { 14 + 2 * S }
 var FONT_SIZE: CGFloat { 8 + S }
-var WIN: NSSize { NSSize(width: max(CGFloat(GW) * S, 72), height: ART_H + 2 + LABEL_H) }   // 72 × 68 at Medium
+var WIN: NSSize {   // 72 × 68 at Medium; just the label in pill mode
+    MODE == "pill" ? NSSize(width: max(65 * S, 120), height: LABEL_H)
+                   : NSSize(width: max(CGFloat(GW) * S, 72), height: ART_H + 2 + LABEL_H)
+}
 let JUMP = [0, -1, -2, -3, -3, -2, -1, 0, 0, -1, -2, -1, 0]
 
 final class Particle {
@@ -274,7 +280,7 @@ final class DogView: NSView {
     // -- drawing --------------------------------------------------------------------
     override func draw(_ dirtyRect: NSRect) {
         let ox = (bounds.width - CGFloat(GW) * S) / 2      // centre the art if the window is wider than it
-        for p in pixels {
+        for p in pixels where MODE != "pill" {
             p.c.setFill()
             NSRect(x: ox + CGFloat(p.x) * S, y: CGFloat(p.y) * S, width: CGFloat(p.w) * S, height: CGFloat(p.h) * S).fill()
         }
@@ -286,7 +292,7 @@ final class DogView: NSView {
         let str = NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: NSColor.labelColor])
         let tw = ceil(str.size().width)
         let w = min(bounds.width, tw + 6 + 4 + 14), h = LABEL_H
-        let r = NSRect(x: (bounds.width - w) / 2, y: ART_H + 2, width: w, height: h)
+        let r = NSRect(x: (bounds.width - w) / 2, y: MODE == "pill" ? 0 : ART_H + 2, width: w, height: h)
         NSColor.windowBackgroundColor.withAlphaComponent(0.88).setFill()
         let capsule = NSBezierPath(roundedRect: r, xRadius: h / 2, yRadius: h / 2)
         capsule.fill()
@@ -335,8 +341,16 @@ final class DogView: NSView {
 
     override func rightMouseDown(with e: NSEvent) { showMenu(e) }
 
-    func showMenu(_ e: NSEvent) {
+    func showMenu(_ e: NSEvent) { NSMenu.popUpContextMenu(makeMenu(), with: e, for: self) }
+
+    func makeMenu() -> NSMenu {
         let m = NSMenu()
+        if MODE == "menubar" {                                  // no hover label up there, so show the detail here
+            var info = TEXT[state] ?? ""
+            if !detail.isEmpty && ["thinking", "working", "permission"].contains(state) { info += ": " + detail }
+            m.addItem(NSMenuItem(title: info, action: nil, keyEquivalent: ""))
+            m.addItem(.separator())
+        }
         for (title, value) in [("Dog", "dog"), ("Cat", "cat")] {
             let it = NSMenuItem(title: title, action: #selector(choosePet(_:)), keyEquivalent: "")
             it.target = self; it.representedObject = value; it.state = PET == value ? .on : .off
@@ -351,14 +365,24 @@ final class DogView: NSView {
             sizes.addItem(it)
         }
         sizeItem.submenu = sizes
-        m.addItem(sizeItem)
+        if MODE != "menubar" { m.addItem(sizeItem) }
+        let modeItem = NSMenuItem(title: "Show as", action: nil, keyEquivalent: "")
+        let modes = NSMenu()
+        for (name, value) in MODES {
+            let it = NSMenuItem(title: name, action: #selector(chooseMode(_:)), keyEquivalent: "")
+            it.target = self; it.representedObject = value; it.state = MODE == value ? .on : .off
+            modes.addItem(it)
+        }
+        modeItem.submenu = modes
+        m.addItem(modeItem)
         m.addItem(.separator())
         let reset = NSMenuItem(title: "Move to corner", action: #selector(resetPosition), keyEquivalent: "")
         reset.target = self
         let quit = NSMenuItem(title: "Quit ClaudePet", action: #selector(quit), keyEquivalent: "")
         quit.target = self
-        m.addItem(reset); m.addItem(.separator()); m.addItem(quit)
-        NSMenu.popUpContextMenu(m, with: e, for: self)
+        if MODE != "menubar" { m.addItem(reset); m.addItem(.separator()) }
+        m.addItem(quit)
+        return m
     }
 
     @objc func choosePet(_ sender: NSMenuItem) {
@@ -371,7 +395,20 @@ final class DogView: NSView {
         guard let v = sender.representedObject as? String, let w = window else { return }
         let top = w.frame.maxY, midX = w.frame.midX           // keep the pet where it is: same top edge & centre
         SIZE = v; saveConfig(["size": v])
-        w.setFrame(NSRect(x: midX - WIN.width / 2, y: top - WIN.height, width: WIN.width, height: WIN.height), display: true)
+        refit(w, midX: midX, y: top - WIN.height)
+    }
+
+    @objc func chooseMode(_ sender: NSMenuItem) {
+        guard let v = sender.representedObject as? String, v != MODE, let w = window else { return }
+        let old = MODE, bottom = w.frame.minY, midX = w.frame.midX   // pet ↔ pill: the pill sits where the label was
+        MODE = v; saveConfig(["mode": v])
+        if v != "menubar" { refit(w, midX: midX, y: old == "menubar" ? w.frame.maxY - WIN.height : bottom) }
+        (NSApp.delegate as? AppDelegate)?.applyMode()
+    }
+
+    /// Resize the window for the current size/mode, centred on midX with its bottom edge at y.
+    func refit(_ w: NSWindow, midX: CGFloat, y: CGFloat) {
+        w.setFrame(NSRect(x: midX - WIN.width / 2, y: y, width: WIN.width, height: WIN.height), display: true)
         frame = NSRect(origin: .zero, size: WIN)
         let primaryH = NSScreen.screens.first?.frame.height ?? 0
         if loadConfig()["x"] is NSNumber { saveConfig(["x": Int(w.frame.minX), "y": Int(primaryH - w.frame.maxY)]) }
@@ -403,6 +440,8 @@ func savedOrigin() -> NSPoint? {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     var panel: NSPanel!
     var dog: DogView!
+    var statusItem: NSStatusItem?
+    var lastTitle = ""
 
     func applicationDidFinishLaunching(_ n: Notification) {
         dog = DogView(frame: NSRect(origin: .zero, size: WIN))
@@ -416,12 +455,61 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.hidesOnDeactivate = false
         panel.isMovable = false
         panel.acceptsMouseMovedEvents = true
-        panel.contentView = dog
-        panel.orderFrontRegardless()
+        panel.contentView = dog              // shown (or not, in menu bar mode) by applyMode()
 
         dog.poll()
-        let timer = Timer(timeInterval: 0.11, repeats: true) { [weak self] _ in self?.dog.tick() }
+        applyMode()
+        let timer = Timer(timeInterval: 0.11, repeats: true) { [weak self] _ in self?.dog.tick(); self?.updateStatusItem() }
         RunLoop.main.add(timer, forMode: .common)
+    }
+
+    // -- menu bar mode ------------------------------------------------------------------
+    func applyMode() {
+        if MODE == "menubar" {
+            panel.orderOut(nil)
+            guard statusItem == nil else { return }
+            let si = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+            si.button?.target = self
+            si.button?.action = #selector(statusClicked)
+            si.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
+            si.button?.imagePosition = .imageLeft
+            statusItem = si; lastTitle = ""
+            updateStatusItem()
+        } else {
+            if let si = statusItem { NSStatusBar.system.removeStatusItem(si); statusItem = nil }
+            panel.orderFrontRegardless()
+        }
+    }
+
+    @objc func statusClicked() {
+        guard let si = statusItem else { return }
+        si.menu = dog.makeMenu()
+        si.button?.performClick(nil)     // opens the menu
+        si.menu = nil
+    }
+
+    /// Draw the pet's current frame into the menu bar, scaled to the bar's height.
+    func updateStatusItem() {
+        guard let b = statusItem?.button else { return }
+        let k = NSStatusBar.system.thickness / CGFloat(GH)
+        let pixels = dog.pixels
+        func snap(_ v: Int) -> CGFloat { (CGFloat(v) * k * 2).rounded() / 2 }   // keep pixel edges crisp
+        b.image = NSImage(size: NSSize(width: CGFloat(GW) * k, height: CGFloat(GH) * k), flipped: true) { _ in
+            for p in pixels {
+                p.c.setFill()
+                let x = snap(p.x), y = snap(p.y)
+                NSRect(x: x, y: y, width: snap(p.x + p.w) - x, height: snap(p.y + p.h) - y).fill()
+            }
+            return true
+        }
+        let text = TEXT[dog.state] ?? ""
+        b.toolTip = dog.detail.isEmpty ? text : "\(text): \(dog.detail)"
+        guard text != lastTitle else { return }
+        lastTitle = text
+        let font = NSFont.menuBarFont(ofSize: 0)
+        let t = NSMutableAttributedString(string: "●", attributes: [.font: font, .foregroundColor: DOT[dog.state] ?? .systemGray])
+        t.append(NSAttributedString(string: " " + text, attributes: [.font: font, .foregroundColor: NSColor.labelColor]))
+        b.attributedTitle = t
     }
 
     func applicationWillTerminate(_ n: Notification) { unlink(pidPath) }
