@@ -3,7 +3,7 @@
 // Built automatically by `claudepet start` (swiftc -O mac/ClaudePetMac.swift -o ~/.claudepet/ClaudePetMac).
 //
 //   click  → pet the dog (hearts, wakes it up)     hover → label shows what Claude is doing
-//   drag   → move it (position is remembered)      right-click → Move to corner / Quit
+//   drag   → move it (position is remembered)      right-click → Dog / Cat, Size, Move to corner, Quit
 import AppKit
 
 // MARK: - files & config
@@ -83,10 +83,33 @@ let DOG_BODY = [
     "..obbcccccbboob.",
     "..obbbbbbbbbo...",
 ]
-let DOG_LEGS = [["..ob.ob..bo.bo..", "..oo.oo..oo.oo.."],
-                ["...ob.ob.bo.bo..", "...oo.oo.oo.oo.."]]
-let PAL: [Character: NSColor] = ["o": hex("#3a2412"), "b": hex("#d29a5e"), "c": hex("#f5e4c8"), "p": hex("#ef6f8a"),
-                                 "d": hex("#7a4f2c"), "n": hex("#1e120a"), "E": hex("#141414")]
+let CAT_BODY = [
+    "..o.........o...",
+    ".obo.......obo..",
+    ".opbooooooobpo..",
+    "obbbbdbdbdbbbbo.",
+    "obbbbbbbbbbbbbo.",
+    "obbbEbbbbbEbbbo.",
+    "obbbEbbbbbEbbbo.",
+    "owwbbbbpbbbbwwo.",
+    ".obbbbcccbbbbo.d",
+    "..oobbbbbbboo..d",
+    "..obbcccccbbo.d.",
+    "..obbcccccbbodd.",
+    "..obbbbbbbbbo...",
+]
+let LEGS = [["..ob.ob..bo.bo..", "..oo.oo..oo.oo.."],
+            ["...ob.ob.bo.bo..", "...oo.oo.oo.oo.."]]
+let DOG_PAL: [Character: NSColor] = ["o": hex("#3a2412"), "b": hex("#d29a5e"), "c": hex("#f5e4c8"), "p": hex("#ef6f8a"),
+                                     "d": hex("#7a4f2c"), "n": hex("#1e120a"), "E": hex("#141414")]
+let CAT_PAL: [Character: NSColor] = ["o": hex("#2b2d35"), "b": hex("#a3a8b3"), "c": hex("#eceef2"), "p": hex("#f29bb0"),
+                                     "d": hex("#626874"), "w": hex("#eceef2"), "E": hex("#141414")]
+
+// MARK: - pet kind & size (chosen from the right-click menu, saved in config.json)
+var PET = (loadConfig()["pet"] as? String) == "cat" ? "cat" : "dog"
+var PAL: [Character: NSColor] { PET == "cat" ? CAT_PAL : DOG_PAL }
+let SIZES: [(String, CGFloat)] = [("Small", 1.5), ("Medium", 2), ("Big", 3)]
+var SIZE = SIZES.contains { $0.0 == (loadConfig()["size"] as? String) } ? loadConfig()["size"] as! String : "Medium"
 let GLYPHS: [String: [String]] = [
     "z": ["111", "001", "010", "100", "111"],
     "!": ["1", "1", "1", "0", "1"],
@@ -96,7 +119,7 @@ let GLYPHS: [String: [String]] = [
 ]
 
 func dogFrame(legs: Int, eyesOpen: Bool, flip: Bool) -> [[Character]] {
-    var rows = (DOG_BODY + DOG_LEGS[legs % 2]).map { Array($0) }
+    var rows = ((PET == "cat" ? CAT_BODY : DOG_BODY) + LEGS[legs % 2]).map { Array($0) }
     if !eyesOpen {   // top eye pixel → fur, bottom → a closed-eye line
         let src = rows
         for y in 0..<rows.count {
@@ -109,11 +132,12 @@ func dogFrame(legs: Int, eyesOpen: Bool, flip: Bool) -> [[Character]] {
 }
 
 // MARK: - layout (points)
-let S: CGFloat = 2                 // points per art pixel
 let GW = 36, GH = 24               // art canvas in art pixels
-let ART_H = CGFloat(GH) * S        // 48
-let LABEL_H: CGFloat = 18
-let WIN = NSSize(width: CGFloat(GW) * S, height: ART_H + 2 + LABEL_H)   // 72 × 68
+var S: CGFloat { SIZES.first { $0.0 == SIZE }?.1 ?? 2 }   // points per art pixel
+var ART_H: CGFloat { CGFloat(GH) * S }
+var LABEL_H: CGFloat { 14 + 2 * S }
+var FONT_SIZE: CGFloat { 8 + S }
+var WIN: NSSize { NSSize(width: max(CGFloat(GW) * S, 72), height: ART_H + 2 + LABEL_H) }   // 72 × 68 at Medium
 let JUMP = [0, -1, -2, -3, -3, -2, -1, 0, 0, -1, -2, -1, 0]
 
 final class Particle {
@@ -249,15 +273,16 @@ final class DogView: NSView {
 
     // -- drawing --------------------------------------------------------------------
     override func draw(_ dirtyRect: NSRect) {
+        let ox = (bounds.width - CGFloat(GW) * S) / 2      // centre the art if the window is wider than it
         for p in pixels {
             p.c.setFill()
-            NSRect(x: CGFloat(p.x) * S, y: CGFloat(p.y) * S, width: CGFloat(p.w) * S, height: CGFloat(p.h) * S).fill()
+            NSRect(x: ox + CGFloat(p.x) * S, y: CGFloat(p.y) * S, width: CGFloat(p.w) * S, height: CGFloat(p.h) * S).fill()
         }
         // status label: a small capsule with a coloured dot
         var text = TEXT[state] ?? ""
         if hovering && !detail.isEmpty && ["thinking", "working", "permission"].contains(state) { text = detail }
         if text.count > 16 { text = String(text.prefix(15)) + "…" }
-        let font = NSFont.systemFont(ofSize: 10, weight: .medium)
+        let font = NSFont.systemFont(ofSize: FONT_SIZE, weight: .medium)
         let str = NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: NSColor.labelColor])
         let tw = ceil(str.size().width)
         let w = min(bounds.width, tw + 6 + 4 + 14), h = LABEL_H
@@ -312,12 +337,45 @@ final class DogView: NSView {
 
     func showMenu(_ e: NSEvent) {
         let m = NSMenu()
+        for (title, value) in [("Dog", "dog"), ("Cat", "cat")] {
+            let it = NSMenuItem(title: title, action: #selector(choosePet(_:)), keyEquivalent: "")
+            it.target = self; it.representedObject = value; it.state = PET == value ? .on : .off
+            m.addItem(it)
+        }
+        m.addItem(.separator())
+        let sizeItem = NSMenuItem(title: "Size", action: nil, keyEquivalent: "")
+        let sizes = NSMenu()
+        for (name, _) in SIZES {
+            let it = NSMenuItem(title: name, action: #selector(chooseSize(_:)), keyEquivalent: "")
+            it.target = self; it.representedObject = name; it.state = SIZE == name ? .on : .off
+            sizes.addItem(it)
+        }
+        sizeItem.submenu = sizes
+        m.addItem(sizeItem)
+        m.addItem(.separator())
         let reset = NSMenuItem(title: "Move to corner", action: #selector(resetPosition), keyEquivalent: "")
         reset.target = self
         let quit = NSMenuItem(title: "Quit ClaudePet", action: #selector(quit), keyEquivalent: "")
         quit.target = self
         m.addItem(reset); m.addItem(.separator()); m.addItem(quit)
         NSMenu.popUpContextMenu(m, with: e, for: self)
+    }
+
+    @objc func choosePet(_ sender: NSMenuItem) {
+        guard let v = sender.representedObject as? String else { return }
+        PET = v; saveConfig(["pet": v])
+        compose(); needsDisplay = true
+    }
+
+    @objc func chooseSize(_ sender: NSMenuItem) {
+        guard let v = sender.representedObject as? String, let w = window else { return }
+        let top = w.frame.maxY, midX = w.frame.midX           // keep the pet where it is: same top edge & centre
+        SIZE = v; saveConfig(["size": v])
+        w.setFrame(NSRect(x: midX - WIN.width / 2, y: top - WIN.height, width: WIN.width, height: WIN.height), display: true)
+        frame = NSRect(origin: .zero, size: WIN)
+        let primaryH = NSScreen.screens.first?.frame.height ?? 0
+        if loadConfig()["x"] is NSNumber { saveConfig(["x": Int(w.frame.minX), "y": Int(primaryH - w.frame.maxY)]) }
+        needsDisplay = true
     }
 
     @objc func resetPosition() {

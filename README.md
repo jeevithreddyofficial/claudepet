@@ -11,7 +11,8 @@ A small floating pill for macOS that shows what Claude Code is doing:
 | 🐶 **Done** (green) | just finished; goes back to Idle after a few seconds |
 
 It floats above other windows, including full-screen apps, on every desktop. It follows light and dark mode
-and doesn't appear in the Dock or Cmd-Tab. Drag it to move it (it remembers the spot); right-click to quit.
+and doesn't appear in the Dock or Cmd-Tab. Drag it to move it (it remembers the spot). Right-click to switch between a dog and a cat, pick a size
+(Small, Medium, Big), or quit; your choices are remembered.
 If several Claude Code sessions are open, it shows the most urgent one.
 
 **Unofficial fan project, not affiliated with Anthropic.**
