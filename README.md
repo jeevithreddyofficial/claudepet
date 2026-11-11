@@ -53,8 +53,11 @@ If several Claude Code sessions are open, it shows the most urgent one.
 - **Size**: Small, Medium or Big
 - **Show as**:
   - **Pet**: the floating pet with a status label
-  - **Pill**: just a compact floating status pill
-  - **Menu bar**: the pet and its status live in your menu bar
+  - **Pill**: a compact floating pill with your pet's animated pixel head, a pixel status icon,
+    what Claude is doing right now and how long it's been at it. It's tinted to match the status, with
+    a progress sweep while Claude works and a red pulse when it needs you
+  - **Menu bar**: a small chip in your menu bar with the pixel head, status icon and status word.
+    It has a solid background so it reads on any wallpaper, and it's sized to the real bar height, notch included
 - **Move to corner**
 - **Quit**
 
