@@ -1,0 +1,10 @@
+#!/bin/sh
+# Thin wrapper so you can symlink this onto your PATH:
+#   ln -s "$(pwd)/bin/claudepet" /usr/local/bin/claudepet
+SELF="$0"
+while [ -L "$SELF" ]; do
+  LINK=$(readlink "$SELF")
+  case "$LINK" in /*) SELF="$LINK" ;; *) SELF="$(dirname "$SELF")/$LINK" ;; esac
+done
+ROOT="$(cd "$(dirname "$SELF")/.." && pwd)"
+exec "${CLAUDEPET_PYTHON:-python3}" "$ROOT/claudepet/cli.py" "$@"
