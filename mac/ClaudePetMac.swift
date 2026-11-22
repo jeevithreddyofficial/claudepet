@@ -140,7 +140,8 @@ func dogFrame(legs: Int, eyesOpen: Bool, flip: Bool) -> [[Character]] {
 
 // MARK: - layout (points)
 let GW = 36, GH = 24               // art canvas in art pixels
-var S: CGFloat { SIZES.first { $0.0 == SIZE }?.1 ?? 2 }   // points per art pixel
+let PET_SCALE: CGFloat = 2          // pet mode draws bigger than the pill / menu bar
+var S: CGFloat { (SIZES.first { $0.0 == SIZE }?.1 ?? 2) * (MODE == "pet" ? PET_SCALE : 1) }   // points per art pixel
 var ART_H: CGFloat { CGFloat(GH) * S }
 var LABEL_H: CGFloat { 14 + 2 * S }
 var FONT_SIZE: CGFloat { 8 + S }
